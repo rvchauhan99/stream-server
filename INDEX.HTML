@@ -1,0 +1,12 @@
+<video id="player" controls width="600"></video>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script>
+  const video = document.getElementById('player');
+  const hls = new Hls();
+  hls.loadSource('https://vz-802c922b-aaf.b-cdn.net/b92da5a5-6b47-4f76-a4a4-b2260089d183/preview.webp');
+  hls.attachMedia(video);
+</script>
+
+
+

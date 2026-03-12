@@ -1,0 +1,22 @@
+const user = require('./user/router')
+const video = require('./video/router')
+const bunny = require('./bunny/router')
+const auth = require('./authRouter')
+const interaction = require('./interaction/router')
+const plan = require('./plan/router')
+const subscription = require('./subscription/router')
+const router = require('express').Router()
+const genericMaster = require('./genericMaster/router')
+const payout = require('./payout/router')
+
+router.use('/user', user)
+router.use('/video', video)
+router.use('/bunny', bunny)
+router.use('/auth', auth)
+router.use('/plan', plan)
+router.use('/subscription', subscription)
+router.use('/genericMaster', genericMaster)
+router.use('/interaction', interaction)
+router.use('/payout', payout)
+
+module.exports = router
