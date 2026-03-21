@@ -1,5 +1,6 @@
 const axios = require('axios');
 const fs = require('fs');
+const { logBunnyApiError } = require('../utils/logBunnyApiError');
 require('dotenv').config();
 
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE; // e.g. knightkings
@@ -31,9 +32,7 @@ async function uploadToBunnyStorage(localFilePath, remoteFileName) {
 
     return `${BUNNY_STORAGE_ENDPOINT}${remoteFileName}`;
   } catch (error) {
-    console.log('Upload Error:', error.message);
-    console.error('Inner upload error:', error.message);
-
+    logBunnyApiError('Storage PUT upload', error);
     return new Error('File upload failed');
   }
 }
@@ -49,7 +48,7 @@ async function deleteFromBunnyStorage(fullUrl) {
     console.log(`✅ Deleted from Bunny: ${fileName}`);
     return true;
   } catch (err) {
-    console.warn(`❌ Failed to delete from Bunny: ${fileName}`, err.message);
+    logBunnyApiError(`Storage DELETE ${fileName}`, err);
     return false;
   }
 }

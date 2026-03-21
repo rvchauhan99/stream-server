@@ -20,6 +20,7 @@ const upload = multer({ dest: 'temp/' }); // Temporary folder for uploads
 const MAX_THUMBNAIL_SIZE = process.env.MAX_THUMBNAIL_SIZE ? process.env.MAX_THUMBNAIL_SIZE : 10 * 1024 * 1024; // 3 MB
 const MAX_PREVIEW_SIZE = process.env.MAX_PREVIEW_SIZE ? process.env.MAX_PREVIEW_SIZE : 100 * 1024 * 1024;   // 5 MB
 const { safeDelete } = require('../../utils/safeDelete');
+const { logBunnyApiError } = require('../../utils/logBunnyApiError');
 const { createSecureUrl } = require('../../utils/videoTokenAuth');
 
 
@@ -100,8 +101,10 @@ exports.uploadVideo = async (req, res) => {
                 },
 
                 onError(error) {
-                    console.error("TUS Upload failed:", error);
-                    // return res.status(500).json({ error: "Upload failed" });
+                    console.error('TUS Upload failed:', error?.message || error);
+                    if (error?.originalResponse != null) {
+                        console.error('TUS originalResponse:', error.originalResponse);
+                    }
                     req.io.to(socketId).emit("upload-error", {
                         videoId,
                         error: error.message || "Upload failed"
@@ -189,8 +192,11 @@ exports.uploadVideo = async (req, res) => {
         }
 
     } catch (err) {
-        console.error("Upload Error:", err.response?.data || err.message);
-        res.status(500).json({ error: "Upload failed" });
+        logBunnyApiError('Stream create video (POST /library/.../videos)', err);
+        res.status(500).json({
+            error: 'Upload failed',
+            bunny: err.response?.data ?? null,
+        });
     }
 }
 
@@ -227,8 +233,11 @@ exports.deleteUploadedVideo = async (req, res) => {
         await Video.deleteOne({ _id: video._id });
         return res.json({ message: 'Video deleted successfully from Bunny and Database.' });
     } catch (err) {
-        console.error('Error deleting video:', err.response?.data || err.message);
-        res.status(500).json({ message: 'Failed to delete video' });
+        logBunnyApiError('Stream delete video', err);
+        res.status(500).json({
+            message: 'Failed to delete video',
+            bunny: err.response?.data ?? null,
+        });
     }
 };
 
@@ -669,82 +678,86 @@ exports.getVideoDetails = async (req, res) => {
 
 exports.getRelatedVideos = async (req, res) => {
     try {
+        const { id } = req.params;
+        const limit = Math.min(parseInt(req.query.limit, 10) || 24, 48);
 
-        console.log("getRelatedVideos called");
-        const { videoId } = req.params;
-        const limit = parseInt(req.query.limit) || 10;
-
-        // Get the current video
-        const currentVideo = await Video.findOne({ videoId });
+        let currentVideo = null;
+        if (mongoose.Types.ObjectId.isValid(id)) {
+            currentVideo = await Video.findById(id).lean();
+        }
+        if (!currentVideo) {
+            currentVideo = await Video.findOne({ videoId: id }).lean();
+        }
         if (!currentVideo) {
             return res.status(404).json({
                 success: false,
-                message: 'Video not found'
+                message: 'Video not found',
             });
         }
 
-        // Build $or conditions dynamically
+        const excludeIds = [currentVideo._id];
+        const excludeVideoIds = [currentVideo.videoId].filter(Boolean);
+
         const orConditions = [
             { category: currentVideo.category },
-            { tags: { $in: currentVideo.tags } },
-            { creatorId: currentVideo.creatorId }
+            { tags: { $in: currentVideo.tags || [] } },
+            { creatorId: currentVideo.creatorId },
         ];
         if (typeof currentVideo.title === 'string' && currentVideo.title.trim() !== '') {
-            orConditions.push({ title: { $regex: currentVideo.title, $options: 'i' } });
+            const safe = currentVideo.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 80);
+            orConditions.push({ title: { $regex: safe, $options: 'i' } });
         }
         if (typeof currentVideo.description === 'string' && currentVideo.description.trim() !== '') {
-            orConditions.push({ description: { $regex: currentVideo.description, $options: 'i' } });
+            const safe = currentVideo.description.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').slice(0, 120);
+            orConditions.push({ description: { $regex: safe, $options: 'i' } });
         }
 
-        // Find related videos based on multiple criteria
         const relatedVideos = await Video.find({
-            videoId: { $ne: currentVideo.videoId }, // Exclude current video
+            _id: { $nin: excludeIds },
+            videoId: { $nin: excludeVideoIds },
             $or: orConditions,
         })
-            .sort({ 'stats.views': -1 }) // Sort by views
+            .sort({ 'stats.views': -1 })
+            .limit(limit)
+            .populate('creatorId', 'name username')
             .lean();
 
-        // If we have less related videos than the limit, fetch additional popular videos
+        const relatedCount = relatedVideos.length;
+        let combined = [...relatedVideos];
+
         if (relatedVideos.length < limit) {
+            const existingMongoIds = relatedVideos.map((v) => v._id);
+            const existingBunnyIds = relatedVideos.map((v) => v.videoId);
             const remainingCount = limit - relatedVideos.length;
-            const existingVideoIds = relatedVideos.map(video => video.videoId);
+
             const additionalVideos = await Video.find({
-                videoId: {
-                    $ne: currentVideo.videoId,
-                    $nin: existingVideoIds
-                }
+                _id: { $nin: [...excludeIds, ...existingMongoIds] },
+                videoId: { $nin: [...excludeVideoIds, ...existingBunnyIds] },
             })
                 .sort({ 'stats.views': -1 })
                 .limit(remainingCount)
+                .populate('creatorId', 'name username')
                 .lean();
-            const combinedVideos = [...relatedVideos, ...additionalVideos];
-            return res.json({
-                success: true,
-                // data: {
-                videos: combinedVideos,
-                page: 1,
-                totalPages: 1,
-                total: combinedVideos.length
-                // }
-            });
+
+            combined = [...relatedVideos, ...additionalVideos];
+        } else {
+            combined = relatedVideos;
         }
 
-        // If we have enough related videos, return them
         res.json({
             success: true,
-            videos: relatedVideos,
+            videos: combined,
+            relatedCount,
             page: 1,
             totalPages: 1,
-            total: relatedVideos.length
+            total: combined.length,
         });
-
     } catch (error) {
-        console.log("error", error);
         console.error('Error fetching related videos:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to fetch related videos',
-            error: error.message
+            error: error.message,
         });
     }
 };

@@ -82,7 +82,7 @@ exports.validateAdmin = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     // console.log("decoded user", decoded);
     if (decoded.role !== 'admin' && decoded.role !== 'superadmin') {
-      return res.status(401).json({ message: 'Unauthorized. User is not an admin.' });
+      return res.status(403).json({ message: 'Forbidden. Admin access required.' });
     }
 
     const user = await User.findById(decoded.id);
@@ -111,7 +111,7 @@ exports.validateCreator = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     console.log("decoded user", decoded);
     if (decoded.role !== 'admin' && decoded.role !== 'superadmin' && decoded.role !== 'creator') {
-      return res.status(401).json({ message: 'Unauthorized. User.' });
+      return res.status(403).json({ message: 'Forbidden. Creator or admin access required.' });
     }
 
     const user = await User.findById(decoded.id);
