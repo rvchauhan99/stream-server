@@ -9,6 +9,8 @@ const router = require('express').Router()
 const genericMaster = require('./genericMaster/router')
 const payout = require('./payout/router')
 const report = require('./report/router')
+const upi = require('./upi/router')
+const paymentAudit = require('./paymentAudit/router')
 
 router.use('/user', user)
 router.use('/video', video)
@@ -20,5 +22,7 @@ router.use('/genericMaster', genericMaster)
 router.use('/interaction', interaction)
 router.use('/payout', payout)
 router.use('/reports', report)
+router.use('/upi', upi)
+router.use('/paymentAudit', paymentAudit)
 
 module.exports = router
