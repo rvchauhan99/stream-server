@@ -50,6 +50,10 @@ app.use((req, res, next) => {
 
 app.use(router)
 
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
 io.on('connection', (socket) => {
   console.log('⚡ New socket connected:', socket.id);
 
