@@ -23,10 +23,20 @@ exports.requireVideoAccess = async (req, res, next) => {
                 { _id: videoId.match(/^[0-9a-fA-F]{24}$/) ? videoId : null },
                 { videoId },
             ],
-        }).select('monetization creatorId');
+        }).select('monetization creatorId isActive');
 
         // Video not found → let the controller handle the 404
         if (!video) return next();
+
+        // Moderation hard-block: deactivated videos must not be accessible for public viewers.
+        if (video.isActive === false) {
+            if (req.user) {
+                const { role, _id: userId } = req.user;
+                if (role === 'admin' || role === 'superadmin') return next();
+                if (role === 'creator' && String(video.creatorId) === String(userId)) return next();
+            }
+            return res.status(404).json({ message: 'Video is deactivated' });
+        }
 
         const monetizationType = video.monetization?.type ?? 'free';
 
@@ -79,6 +89,11 @@ exports.requireVideoAccess = async (req, res, next) => {
  * Used by the video detail controller to include access status in the response.
  */
 exports.checkVideoAccess = async (userId, userRole, video) => {
+    if (video?.isActive === false) {
+        if (userRole === 'admin' || userRole === 'superadmin') return { canAccess: true };
+        if (userRole === 'creator' && String(video.creatorId) === String(userId)) return { canAccess: true };
+        return { canAccess: false, reason: 'video_deactivated' };
+    }
     const monetizationType = video.monetization?.type ?? 'free';
 
     if (monetizationType === 'free') return { canAccess: true };

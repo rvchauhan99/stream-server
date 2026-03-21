@@ -16,13 +16,12 @@ router.get('/videos/:videoId/views', auth.checkUser, interactionController.getVi
 router.post('/videos/:videoId/likes', auth.checkUser, interactionController.toggleLike);
 router.get('/videos/:videoId/likes', auth.checkUser, interactionController.getLikes);
 
-// Toggle like or dislike
-router.post('/like-dislike/:videoId', interactionController.toggleLikeDislike);
+// Toggle like or dislike (optional auth: checkUser sets req.user when token present)
+router.post('/like-dislike/:videoId', auth.checkUser, interactionController.toggleLikeDislike);
 
-// Get likes
-router.get('/likes/:videoId', interactionController.getLikes);
+// Get likes / dislikes (optional auth for current-user state)
+router.get('/likes/:videoId', auth.checkUser, interactionController.getLikes);
 
-// Get dislikes
-router.get('/dislikes/:videoId', interactionController.getDislikes);
+router.get('/dislikes/:videoId', auth.checkUser, interactionController.getDislikes);
 
 module.exports = router;

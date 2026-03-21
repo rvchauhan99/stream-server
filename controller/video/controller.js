@@ -602,6 +602,8 @@ exports.searchVideos = async (req, res) => {
         }
 
         const query = orConditions.length > 0 ? { $or: orConditions } : {};
+        // Moderation hard-block: exclude deactivated content, but treat missing as active for legacy rows.
+        query.isActive = { $ne: false };
 
         let sortOption = {};
         if (sortBy) {
@@ -651,6 +653,20 @@ exports.getVideoDetails = async (req, res) => {
         const video = await Video.findById(id).populate('creatorId');
         if (!video) {
             return res.status(404).json({ error: 'Video not found' });
+        }
+        // Moderation hard-block: deactivated videos are not accessible for public viewers.
+        if (video.isActive === false) {
+            if (req.user) {
+                const { role, _id: userId } = req.user;
+                const creatorId = video.creatorId?._id || video.creatorId;
+                const isOwner = role === 'creator' && String(creatorId) === String(userId);
+                const isAdmin = role === 'admin' || role === 'superadmin';
+                if (!isOwner && !isAdmin) {
+                    return res.status(404).json({ error: 'Video is deactivated' });
+                }
+            } else {
+                return res.status(404).json({ error: 'Video is deactivated' });
+            }
         }
         if (video.monetization.type === 'paid' || video.monetization.type === 'rent') {
             if (!req.user) {
@@ -715,6 +731,7 @@ exports.getRelatedVideos = async (req, res) => {
         const relatedVideos = await Video.find({
             _id: { $nin: excludeIds },
             videoId: { $nin: excludeVideoIds },
+            isActive: { $ne: false },
             $or: orConditions,
         })
             .sort({ 'stats.views': -1 })
@@ -733,6 +750,7 @@ exports.getRelatedVideos = async (req, res) => {
             const additionalVideos = await Video.find({
                 _id: { $nin: [...excludeIds, ...existingMongoIds] },
                 videoId: { $nin: [...excludeVideoIds, ...existingBunnyIds] },
+                isActive: { $ne: false },
             })
                 .sort({ 'stats.views': -1 })
                 .limit(remainingCount)
@@ -857,7 +875,7 @@ getLikedVideos = async (req, res) => {
 exports.updateVideo = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, category, tags, visibility } = req.body;
+        const { title, description, category, tags, visibility, isActive } = req.body;
 
         const video = await Video.findById(id);
         if (!video) return res.status(404).json({ message: 'Video not found' });
@@ -874,6 +892,7 @@ exports.updateVideo = async (req, res) => {
         if (category !== undefined) video.category = category;
         if (tags !== undefined) video.tags = Array.isArray(tags) ? tags : JSON.parse(tags);
         if (visibility !== undefined) video.visibility = visibility;
+        if (isActive !== undefined) video.isActive = Boolean(isActive);
 
         await video.save();
         res.status(200).json({ message: 'Video updated successfully', video });

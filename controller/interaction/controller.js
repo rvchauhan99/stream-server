@@ -1,6 +1,13 @@
+const mongoose = require('mongoose');
 const Comment = require('../../models/comment');
 const View = require('../../models/view');
 const Like = require('../../models/like');
+const Video = require('../../models/video');
+
+/** Like schema requires `ip`; always set from request (fallback if proxy headers missing). */
+function requestIp(req) {
+    return req.ip || req.socket?.remoteAddress || '0.0.0.0';
+}
 
 // Comment Controllers
 exports.createComment = async (req, res) => {
@@ -13,6 +20,7 @@ exports.createComment = async (req, res) => {
             ip: req.ip
         });
         await comment.save();
+        await Video.updateOne({ _id: videoId }, { $inc: { 'stats.comments': 1 } });
         res.status(201).json(comment);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -23,8 +31,8 @@ exports.getComments = async (req, res) => {
     try {
         const { videoId } = req.params;
         const comments = await Comment.find({ videoId })
-            .populate('userId', 'username')
-            .populate('replies.fromUser', 'username');
+            .populate('userId', 'username name profileImage')
+            .populate('replies.fromUser', 'username name profileImage');
         res.json(comments);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -54,28 +62,37 @@ exports.addReply = async (req, res) => {
 exports.addView = async (req, res) => {
     try {
         const { videoId } = req.params;
-        
-        // Check for existing view from same user or IP
-        const existingView = await View.findOne({
-            videoId,
-            $or: [
-                { userId: req.user?._id },
-                { ip: req.ip }
-            ]
-        });
+        if (!mongoose.Types.ObjectId.isValid(videoId)) {
+            return res.status(400).json({ message: 'Invalid video id' });
+        }
 
-        // If view already exists, return existing view
+        let existingView;
+        if (req.user) {
+            existingView = await View.findOne({
+                videoId,
+                userId: req.user._id,
+            });
+        } else {
+            existingView = await View.findOne({
+                videoId,
+                ip: req.ip,
+                $or: [{ userId: null }, { userId: { $exists: false } }],
+            });
+        }
+
         if (existingView) {
             return res.status(200).json(existingView);
         }
 
-        // Create new view if none exists
         const view = new View({
             videoId,
             userId: req.user?._id,
-            ip: req.ip
+            ip: req.ip,
         });
         await view.save();
+
+        await Video.updateOne({ _id: videoId }, { $inc: { 'stats.views': 1 } });
+
         res.status(201).json(view);
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -96,10 +113,11 @@ exports.getViews = async (req, res) => {
 exports.toggleLike = async (req, res) => {
     try {
         const { videoId } = req.params;
+        const ip = requestIp(req);
         let like = await Like.findOne({ 
             videoId, 
             userId: req.user?._id || null,
-            ip: req.ip
+            ip
         });
 
         if (like) {
@@ -108,7 +126,7 @@ exports.toggleLike = async (req, res) => {
             like = new Like({
                 videoId,
                 userId: req.user?._id,
-                ip: req.ip
+                ip
             });
         }
 
@@ -124,19 +142,14 @@ exports.getLikes = async (req, res) => {
         const { videoId } = req.params;
         const likes = await Like.find({ videoId, isLiked: true });
 
-        // Determine user identity
-        let userIdentifier = null;
-        if (req.user && req.user.id) {
-            userIdentifier = { userId: req.user.id };
-        } else {
-            userIdentifier = { ip: req.ip };
-        }
+        const userIdentifier = req.user?._id
+            ? { userId: req.user._id }
+            : { ip: req.ip };
 
-        // Check if the current user/IP has liked the video
         const userLike = await Like.findOne({
             videoId,
             isLiked: true,
-            ...userIdentifier
+            ...userIdentifier,
         });
 
         res.json({
@@ -151,7 +164,8 @@ exports.toggleLikeDislike = async (req, res) => {
     try {
         const { videoId } = req.params;
         const { isLiked } = req.body; // true for like, false for dislike
-        const userIdentifier = req.user?.id ? { userId: req.user.id } : { ip: req.ip };
+        const ip = requestIp(req);
+        const userIdentifier = req.user?._id ? { userId: req.user._id } : { ip };
 
         let existing = await Like.findOne({ videoId, ...userIdentifier });
 
@@ -167,8 +181,12 @@ exports.toggleLikeDislike = async (req, res) => {
                 return res.json({ message: isLiked ? 'Switched to like' : 'Switched to dislike' });
             }
         } else {
-            // Add new like/dislike
-            await Like.create({ videoId, ...userIdentifier, isLiked });
+            await Like.create({
+                videoId,
+                isLiked,
+                ip,
+                ...(req.user?._id ? { userId: req.user._id } : {}),
+            });
             return res.json({ message: isLiked ? 'Liked' : 'Disliked' });
         }
     } catch (error) {
@@ -178,7 +196,7 @@ exports.toggleLikeDislike = async (req, res) => {
 exports.getDislikes = async (req, res) => {
     try {
         const { videoId } = req.params;
-        const userIdentifier = req.user?.id ? { userId: req.user.id } : { ip: req.ip };
+        const userIdentifier = req.user?._id ? { userId: req.user._id } : { ip: req.ip };
 
         const dislikes = await Like.find({ videoId, isLiked: false });
         const userDislike = await Like.findOne({ videoId, isLiked: false, ...userIdentifier });

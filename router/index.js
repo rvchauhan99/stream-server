@@ -8,6 +8,7 @@ const subscription = require('./subscription/router')
 const router = require('express').Router()
 const genericMaster = require('./genericMaster/router')
 const payout = require('./payout/router')
+const report = require('./report/router')
 
 router.use('/user', user)
 router.use('/video', video)
@@ -18,5 +19,6 @@ router.use('/subscription', subscription)
 router.use('/genericMaster', genericMaster)
 router.use('/interaction', interaction)
 router.use('/payout', payout)
+router.use('/reports', report)
 
 module.exports = router

@@ -105,6 +105,14 @@ const videoSchema = new mongoose.Schema({
     type: Number,
     default: 0
   }
+  ,
+  // Moderation / deactivation flag (reports set this to false).
+  // IMPORTANT: existing DB rows may not have this field; treat missing as "active"
+  // in public queries using `{ isActive: { $ne: false } }`.
+  isActive: {
+    type: Boolean,
+    default: true,
+  }
 }, {
   timestamps: true // Automatically handles createdAt and updatedAt
 });

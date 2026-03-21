@@ -14,12 +14,18 @@ app.post('/request', middleware.validateCreator, controller.requestPayout);
 // List my own payout requests
 app.get('/my-requests', middleware.validateCreator, controller.getMyRequests);
 
+// Watch time heartbeats (paid/rent only; authenticated viewers)
+app.post('/video/:id/watchtime', middleware.validateUser, controller.trackWatchTime);
+
 // ─── Payout Rate (readable by any authenticated user, writable by superadmin) ─
 
 app.get('/rate', middleware.validateUser, controller.getRate);
 app.put('/rate', middleware.validateSuperAdmin, controller.updateRate);
 
 // ─── Super Admin Routes ────────────────────────────────────────────────────────
+
+// CSV export (place before :id routes)
+app.get('/admin/export', middleware.validateSuperAdmin, controller.exportAdminRequestsCsv);
 
 // All requests with filters
 app.get('/admin/requests', middleware.validateSuperAdmin, controller.getAllRequests);

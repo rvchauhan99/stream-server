@@ -25,10 +25,21 @@ const videoWatchSessionSchema = new mongoose.Schema({
         required: true,
         index: true,
     },
-    // Total unique seconds credited across all time for payout
+    // Legacy cumulative seconds (analytics); payout uses maxCompletedSessionSeconds + current session
     totalCreditedSeconds: {
         type: Number,
         default: 0,
+    },
+    // Longest completed continuous session (gap > SESSION_GAP_RESET ends a session)
+    maxCompletedSessionSeconds: {
+        type: Number,
+        default: 0,
+    },
+    // Client device id (localStorage UUID) for audit / support
+    deviceFingerprint: {
+        type: String,
+        default: '',
+        trim: true,
     },
     // Seconds credited today (resets each calendar day)
     todayCreditedSeconds: {
