@@ -630,10 +630,15 @@ exports.searchVideos = async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 };
+const mongoose = require('mongoose');
+
 exports.getVideoDetails = async (req, res) => {
     try {
         const { id } = req.params;
         console.log("videoId", id);
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ error: 'Invalid video id' });
+        }
         const video = await Video.findById(id).populate('creatorId');
         if (!video) {
             return res.status(404).json({ error: 'Video not found' });

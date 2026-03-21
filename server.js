@@ -1,17 +1,22 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const port = 3000;
+const port = process.env.SERVER_PORT || 5141;
 const router = require("./router");
 const path = require("path");
 const connectDB = require("./library/db");
 const http = require('http');
 const server = http.createServer(app);
 const { Server } = require('socket.io');
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "http://localhost:3001,http://localhost:3002")
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
 const io = new Server(server, {
   cors: {
-    origin: "*", // Adjust as per your frontend
-    methods: ["GET", "POST"],
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true
   },
   transports: ['websocket', 'polling']
@@ -19,7 +24,11 @@ const io = new Server(server, {
 
 
 require("./utils/croneJobs");
-app.use(cors());
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  credentials: true
+}));
 app.use(express.json());
 app.use((req, res, next) => {
   if (typeof req.body === 'undefined') {

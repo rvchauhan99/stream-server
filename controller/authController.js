@@ -108,7 +108,7 @@ exports.signIn = async (req, res) => {
     console.log("active sessions", activeSessions.length);
 
     console.log("constants.maxUserloginAllowed", constants.maxUserloginAllowed);
-    if (activeSessions.length >= constants.maxUserloginAllowed) {
+    if (process.env.NODE_ENV !== 'development' && activeSessions.length >= constants.maxUserloginAllowed) {
       return res.status(403).json({ message: 'Device limit exceeded. Please logout from another device first.' });
     }
     const ipAddress = req.headers['x-forwarded-for']?.split(',').shift()

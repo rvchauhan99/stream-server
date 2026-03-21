@@ -3,6 +3,9 @@ const RATE_LIMIT_COUNT = 5;
 const RATE_LIMIT_WINDOW = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 module.exports.loginRateLimiter = async function (req, res, next) {
+  if (process.env.NODE_ENV === 'development') {
+    return next();
+  }
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ message: "Email is required for login" });
