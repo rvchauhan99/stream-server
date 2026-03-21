@@ -11,7 +11,7 @@ const server = http.createServer(app);
 const { Server } = require('socket.io');
 const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://localhost:3002,http://127.0.0.1:3002")
   .split(',')
-  .map(origin => origin.trim())
+  .map(origin => origin.trim().replace(/\/$/, ""))
   .filter(Boolean);
 const io = new Server(server, {
   cors: {
