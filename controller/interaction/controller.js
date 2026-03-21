@@ -66,28 +66,31 @@ exports.addView = async (req, res) => {
             return res.status(400).json({ message: 'Invalid video id' });
         }
 
-        let existingView;
+        const ip = requestIp(req);
+        
+        // Enterprise cooldown for counting views: 15 minutes
+        const cooldownMs = 15 * 60 * 1000; 
+        const cutoffTime = new Date(Date.now() - cooldownMs);
+
+        let query = { videoId, createdAt: { $gt: cutoffTime } };
+        
         if (req.user) {
-            existingView = await View.findOne({
-                videoId,
-                userId: req.user._id,
-            });
+            query.userId = req.user._id;
         } else {
-            existingView = await View.findOne({
-                videoId,
-                ip: req.ip,
-                $or: [{ userId: null }, { userId: { $exists: false } }],
-            });
+            query.ip = ip;
+            query.$or = [{ userId: null }, { userId: { $exists: false } }];
         }
 
-        if (existingView) {
-            return res.status(200).json(existingView);
+        const recentView = await View.findOne(query);
+
+        if (recentView) {
+            return res.status(200).json(recentView);
         }
 
         const view = new View({
             videoId,
             userId: req.user?._id,
-            ip: req.ip,
+            ip,
         });
         await view.save();
 

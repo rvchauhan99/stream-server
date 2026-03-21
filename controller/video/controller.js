@@ -11,6 +11,7 @@ const tus = require("tus-js-client");
 const crypto = require("crypto");
 const Video = require('../../models/video'); // Adjust path as needed
 const Like = require('../../models/like');
+const PayoutRequest = require('../../models/payoutRequest');
 require("dotenv").config();
 const BUNNY_API_KEY = process.env.BUNNY_API_KEY;
 const BUNNY_LIBRARY_ID = process.env.BUNNY_LIBRARY_ID;
@@ -220,18 +221,37 @@ exports.deleteUploadedVideo = async (req, res) => {
         }
 
         // Step 2: Delete video from Bunny.net
-        await axios.delete(
-            `https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos/${videoId}`,
-            {
-                headers: {
-                    AccessKey: BUNNY_API_KEY
+        try {
+            await axios.delete(
+                `https://video.bunnycdn.com/library/${BUNNY_LIBRARY_ID}/videos/${videoId}`,
+                {
+                    headers: {
+                        AccessKey: BUNNY_API_KEY
+                    }
                 }
+            );
+        } catch (bunnyErr) {
+            if (bunnyErr.response && bunnyErr.response.status === 404) {
+                console.log(`Video ${videoId} not found in BunnyCDN. Ignoring the error and proceeding.`);
+            } else {
+                throw bunnyErr;
             }
-        );
+        }
 
-        // Step 3 Delete from database
-        await Video.deleteOne({ _id: video._id });
-        return res.json({ message: 'Video deleted successfully from Bunny and Database.' });
+        // Step 3: Check for pending payouts and delete or deactivate
+        const pendingPayout = await PayoutRequest.findOne({
+            status: 'pending',
+            'videoBreakdown.videoId': video._id
+        });
+
+        if (pendingPayout) {
+            video.isActive = false;
+            await video.save();
+            return res.json({ message: 'Video deleted from Bunny and deactivated in database due to pending payout.' });
+        } else {
+            await Video.deleteOne({ _id: video._id });
+            return res.json({ message: 'Video deleted successfully from Bunny and Database.' });
+        }
     } catch (err) {
         logBunnyApiError('Stream delete video', err);
         res.status(500).json({
@@ -459,14 +479,28 @@ exports.deleteThirdPartyVideo = async (req, res) => {
             ? await deleteFromBunnyStorage(video.thumbnailPath)
             : true;
 
-        // Remove from DB
-        await Video.deleteOne({ _id: video._id });
-
-        return res.status(200).json({
-            message: 'Video deleted successfully',
-            // previewDeleted,
-            // thumbnailDeleted
+        // Remove from DB or deactivate if payout pending
+        const pendingPayout = await PayoutRequest.findOne({
+            status: 'pending',
+            'videoBreakdown.videoId': video._id
         });
+
+        if (pendingPayout) {
+            video.isActive = false;
+            await video.save();
+            return res.status(200).json({
+                message: 'Video preview/thumbnail deleted and deactivated in database due to pending payout.',
+                // previewDeleted,
+                // thumbnailDeleted
+            });
+        } else {
+            await Video.deleteOne({ _id: video._id });
+            return res.status(200).json({
+                message: 'Video deleted successfully',
+                // previewDeleted,
+                // thumbnailDeleted
+            });
+        }
 
     } catch (err) {
         console.error('❌ Error deleting video:', err.message);
