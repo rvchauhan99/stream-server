@@ -11,6 +11,7 @@ const payout = require('./payout/router')
 const report = require('./report/router')
 const upi = require('./upi/router')
 const paymentAudit = require('./paymentAudit/router')
+const support = require('./supportTicket/router')
 
 router.use('/user', user)
 router.use('/video', video)
@@ -24,5 +25,6 @@ router.use('/payout', payout)
 router.use('/reports', report)
 router.use('/upi', upi)
 router.use('/paymentAudit', paymentAudit)
+router.use('/support', support)
 
 module.exports = router
