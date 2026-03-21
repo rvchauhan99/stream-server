@@ -15,7 +15,7 @@ const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "http://localhost:30
   .filter(Boolean);
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: (origin, callback) => callback(null, true), // Allow everything
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true
   },
@@ -24,8 +24,12 @@ const io = new Server(server, {
 
 
 require("./utils/croneJobs");
+app.use((req, res, next) => {
+  console.log(`[REQ] ${req.method} ${req.url} | Origin: ${req.get('origin') || 'no-origin'}`);
+  next();
+});
 app.use(cors({
-  origin: allowedOrigins,
+  origin: (origin, callback) => callback(null, true), // Allow everything
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   credentials: true
 }));
