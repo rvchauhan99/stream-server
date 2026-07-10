@@ -3,13 +3,16 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon ./server.js",
-    "start": "node ./server.js"
+    "test": "node SCRIPTS/smokeTest.js",
+    "dev": "nodemon -r ./polyfills.js ./server.js",
+    "start": "node -r ./polyfills.js ./server.js"
   },
   "author": "",
   "license": "ISC",
   "description": "",
+  "engines": {
+    "node": ">=20 <21"
+  },
   "dependencies": {
     "axios": "^1.8.4",
     "bcrypt": "^5.1.1",
