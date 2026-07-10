@@ -1,19 +1,22 @@
 /**
- * Deletes all users and creates 3 demo accounts (viewer, creator, superadmin).
- * Run from stream-server: node SCRIPTS/resetUsers.js
+ * Deletes all users and seeds 3 production accounts.
+ * Against streaming-prod requires: CONFIRM_PROD_RESET=YES
+ *
+ * Usage: CONFIRM_PROD_RESET=YES node SCRIPTS/resetUsers.js
  */
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const User = require('../models/user');
+const Video = require('../models/video');
 const LoginSession = require('../models/loginSession');
 const LoginHistory = require('../models/loginHistory');
 const Otp = require('../models/otp');
 
 const ACCOUNTS = [
-  { email: 'viewer@local.test', password: 'Viewer#2025', role: 'viewer', name: 'Demo Viewer' },
-  { email: 'creator@local.test', password: 'Creator#2025', role: 'creator', name: 'Demo Creator' },
-  { email: 'superadmin@local.test', password: 'SuperAdmin#2025', role: 'superadmin', name: 'Demo Super Admin' },
+  { email: 'creator@knightkings.com', password: 'Creator#2026', role: 'creator', name: 'NightKing Creator' },
+  { email: 'admin@knightkings.com', password: 'Admin#2026', role: 'admin', name: 'NightKing Admin' },
+  { email: 'superadmin@knightkings.com', password: 'SuperAdmin#2026', role: 'superadmin', name: 'NightKing Super Admin' },
 ];
 
 async function main() {
@@ -21,8 +24,15 @@ async function main() {
     console.error('Missing MONGO_URI in .env');
     process.exit(1);
   }
+
   await mongoose.connect(process.env.MONGO_URI);
-  console.log('Connected');
+  const dbName = mongoose.connection.name;
+  console.log(`Connected to DB: ${dbName}`);
+
+  if (dbName === 'streaming-prod' && process.env.CONFIRM_PROD_RESET !== 'YES') {
+    console.error('Refusing to reset streaming-prod without CONFIRM_PROD_RESET=YES');
+    process.exit(1);
+  }
 
   const deletedUsers = await User.deleteMany({});
   await LoginSession.deleteMany({});
@@ -32,6 +42,8 @@ async function main() {
 
   const saltRounds = 10;
   const created = [];
+  let creatorId = null;
+
   for (const acc of ACCOUNTS) {
     const passwordHash = await bcrypt.hash(acc.password, saltRounds);
     const user = await User.create({
@@ -39,19 +51,20 @@ async function main() {
       email: acc.email,
       passwordHash,
       role: acc.role,
+      isActive: true,
     });
-    created.push({
-      id: user._id.toString(),
-      email: user.email,
-      role: user.role,
-      password: acc.password,
-    });
+    if (acc.role === 'creator') creatorId = user._id;
+    created.push({ id: user._id.toString(), email: user.email, role: user.role, password: acc.password });
   }
 
-  console.log('\n--- New accounts (save these credentials) ---');
-  console.table(created.map(({ id, email, role, password }) => ({ id, email, role, password })));
+  if (creatorId) {
+    const videoResult = await Video.updateMany({}, { $set: { creatorId } });
+    console.log(`Reassigned ${videoResult.modifiedCount} video(s) to new creator`);
+  }
+
+  console.table(created);
   await mongoose.disconnect();
-  console.log('\nDone.');
+  console.log('Done.');
 }
 
 main().catch((e) => {

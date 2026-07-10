@@ -21,6 +21,8 @@ const ALLOWED_REASONS = new Set([
   'other',
 ]);
 
+const REPORT_DEACTIVATE_THRESHOLD = 3;
+
 exports.createVideoReport = async (req, res) => {
   try {
     const { videoId } = req.params;
@@ -37,9 +39,7 @@ exports.createVideoReport = async (req, res) => {
     const video = await Video.findById(videoId).populate('creatorId');
     if (!video) return res.status(404).json({ message: 'Video not found' });
 
-    // Ensure creatorId has email for notification. (Fail closed: if creator lacks email, still allow report.)
     const creator = video.creatorId;
-
     const reporterIp = requestIp(req);
     const reporterUserId = req.user?._id;
 
@@ -52,46 +52,52 @@ exports.createVideoReport = async (req, res) => {
       details: sanitizeText(details),
     });
 
-    // First report triggers deactivation + email.
-    if (video.isActive !== false) {
+    const reportCount = await VideoReport.countDocuments({ videoId: video._id });
+    let deactivated = false;
+    if (reportCount >= REPORT_DEACTIVATE_THRESHOLD && video.isActive !== false) {
       video.isActive = false;
       await video.save();
+      deactivated = true;
+    }
 
-      // Avoid crashing the report flow: email failures should not break deactivation.
-      if (creator?.email) {
-        const reporterLine = reporterUserId
-          ? `Reporter: ${req.user?.name || req.user?.username || reporterUserId.toString()}\nReporter Email: ${req.user?.email || 'N/A'}`
-          : `Reporter: Guest\nReporter IP: ${reporterIp}`;
+    if (deactivated && creator?.email) {
+      const reporterLine = reporterUserId
+        ? `Reporter: ${req.user?.name || reporterUserId.toString()}\nReporter Email: ${req.user?.email || 'N/A'}`
+        : `Reporter: Guest\nReporter IP: ${reporterIp}`;
 
-        const subject = `Your video was reported: ${video.title}`;
-        const text = [
-          `Creator: ${creator.name || creator.username || 'N/A'}`,
-          `Creator Email: ${creator.email}`,
-          ``,
-          `Video: ${video.title}`,
-          `Video ID: ${video._id}`,
-          ``,
-          reporterLine,
-          ``,
-          `Reason: ${reason}`,
-          `Details: ${sanitizeText(details) || '—'}`,
-          ``,
-          `Reported At: ${new Date().toISOString()}`,
-          ``,
-          'Note: This action deactivated the video immediately. You can reactivate it from /dashboard/videos.',
-        ].join('\n');
+      const subject = `Your video was deactivated after reports: ${video.title}`;
+      const text = [
+        `Creator: ${creator.name || 'N/A'}`,
+        `Creator Email: ${creator.email}`,
+        ``,
+        `Video: ${video.title}`,
+        `Video ID: ${video._id}`,
+        ``,
+        reporterLine,
+        ``,
+        `Reason: ${reason}`,
+        `Details: ${sanitizeText(details) || '—'}`,
+        ``,
+        `Report count: ${reportCount}`,
+        `Reported At: ${new Date().toISOString()}`,
+        ``,
+        'Note: The video was deactivated after multiple reports. You can reactivate it from /dashboard/videos after review.',
+      ].join('\n');
 
-        try {
-          await sendEmail(creator.email, subject, text);
-        } catch (e) {
-          console.error('Report email send failed:', e?.message || e);
-        }
+      try {
+        await sendEmail(creator.email, subject, text);
+      } catch (e) {
+        console.error('Report email send failed:', e?.message || e);
       }
     }
 
-    res.status(201).json({ message: 'Report received', reportId: report._id });
+    res.status(201).json({
+      message: 'Report received',
+      reportId: report._id,
+      deactivated,
+      reportCount,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-

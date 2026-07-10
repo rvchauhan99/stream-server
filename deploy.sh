@@ -18,11 +18,15 @@ trap 'rm -f "$ENV_VARS_FILE"' EXIT
 {
   echo "# generated from $ENV_FILE"
   grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$' | while IFS= read -r line; do
-    key="$(echo "$line" | sed 's/[[:space:]]*=[[:space:]]*/=/' | cut -d= -f1)"
+    # Strip inline comments (space + # ...) then KEY=VALUE
+    line="$(echo "$line" | sed 's/[[:space:]]#.*$//')"
+    key="$(echo "$line" | sed 's/[[:space:]]*=[[:space:]]*/=/' | cut -d= -f1 | xargs)"
     value="$(echo "$line" | sed 's/[[:space:]]*=[[:space:]]*/=/' | cut -d= -f2-)"
+    value="$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     value="${value#\'}"; value="${value%\'}"
     value="${value#\"}"; value="${value%\"}"
-  [[ -n "$key" && -n "$value" ]] && printf '%s: "%s"\n' "$key" "$(printf '%s' "$value" | sed 's/"/\\"/g')"
+    value="$(echo "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [[ -n "$key" && -n "$value" ]] && printf '%s: "%s"\n' "$key" "$(printf '%s' "$value" | sed 's/"/\\"/g')"
   done
 } > "$ENV_VARS_FILE"
 
@@ -51,7 +55,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --memory 1Gi \
   --cpu 1 \
   --timeout 300 \
-  --min-instances 0 \
+  --min-instances 1 \
   --max-instances 10 \
   --env-vars-file "$ENV_VARS_FILE" \
   --quiet

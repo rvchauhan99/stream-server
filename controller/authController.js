@@ -27,7 +27,7 @@ exports.sendOtp = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-    console.log("OTP generated"  ,  otp);
+    console.log("OTP generated");
 
     await Otp.deleteMany({ email }); // Clear old OTPs
     await Otp.create({ email, otp, expiresAt });
@@ -36,8 +36,8 @@ exports.sendOtp = async (req, res) => {
 
     await sendEmail(
       email,
-      "KnightKings Sign-Up Otp",
-      `Your one-time password for signing up on Knight Kings is ${otp}`
+      "NightKing Sign-Up OTP",
+      `Your one-time password for signing up on NightKing is ${otp}`
     );
 
     res.status(200).send({ message: "OTP sent successfully" });
@@ -63,8 +63,14 @@ exports.signup = async (req, res) => {
     if (existing)
       return res.status(409).json({ message: "Email already registered" });
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User(req.body);
-    user.passwordHash = hashedPassword;
+    const requestedRole = req.body.role === 'creator' ? 'creator' : 'viewer';
+    const user = new User({
+      name: name.trim(),
+      email: email.toLowerCase().trim(),
+      passwordHash: hashedPassword,
+      role: requestedRole,
+      isActive: true,
+    });
     await user.save();
     await Otp.deleteMany({ email });
     res.status(201).json({ message: "User registered successfully" });

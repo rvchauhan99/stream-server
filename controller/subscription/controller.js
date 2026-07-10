@@ -11,81 +11,12 @@ const PromoCode = require('../../models/promoCode');
  * Creates a new subscription; applies promo discount if valid.
  */
 exports.subscribe = async (req, res) => {
-  try {
-    const { planId, paymentMethod, transactionId, amountPaid, promoCode, autoRenew } = req.body;
-
-    if (!planId || !paymentMethod || !transactionId || amountPaid === undefined) {
-      return res.status(400).json({ message: 'planId, paymentMethod, transactionId, amountPaid are required' });
-    }
-
-    const plan = await Plan.findById(planId);
-    if (!plan || !plan.isActive) {
-      return res.status(404).json({ message: 'Plan not found or inactive' });
-    }
-
-    // Cancel any existing active subscription
-    await Subscription.updateMany(
-      { userId: req.user._id, status: 'active' },
-      { status: 'cancelled', updatedBy: req.user._id }
-    );
-
-    let promoCodeId = null;
-    let promoCodeStr = null;
-    let discountApplied = 0;
-    let finalAmountPaid = parseFloat(amountPaid);
-
-    // Apply promo code if provided
-    if (promoCode) {
-      const promo = await PromoCode.findOne({ code: promoCode.toUpperCase().trim() });
-      if (promo) {
-        const { valid, reason } = promo.validate(planId);
-        if (!valid) return res.status(400).json({ message: reason });
-
-        discountApplied = promo.computeDiscount(plan.price);
-        finalAmountPaid = Math.max(0, plan.price - discountApplied);
-        promoCodeId = promo._id;
-        promoCodeStr = promo.code;
-
-        // Atomically increment usage count
-        await PromoCode.findByIdAndUpdate(promo._id, { $inc: { usedCount: 1 } });
-      }
-    }
-
-    const startDate = new Date();
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + plan.validity);
-
-    const subscription = await Subscription.create({
-      userId: req.user._id,
-      planId,
-      startDate,
-      endDate,
-      status: 'active',
-      paymentDetails: {
-        paymentMethod,
-        transactionId,
-        amountPaid: parseFloat(amountPaid),
-      },
-      promoCodeId,
-      promoCode: promoCodeStr,
-      discountApplied,
-      finalAmountPaid,
-      autoRenew: Boolean(autoRenew),
-      createdBy: req.user._id,
-    });
-
-    await User.findByIdAndUpdate(req.user._id, { subscriptionId: subscription._id });
-
-    res.status(201).json({
-      message: 'Subscription activated successfully',
-      subscription,
-      discountApplied,
-      finalAmountPaid,
-    });
-  } catch (err) {
-    console.error('subscribe error:', err.message);
-    res.status(500).json({ message: err.message });
-  }
+  // Client-trusted activation disabled — use UPI payment audit flow only
+  return res.status(403).json({
+    message:
+      'Direct subscription activation is disabled. Pay via UPI and submit your UTR for admin verification.',
+    usePaymentAudit: true,
+  });
 };
 
 // ─── User: My Subscription ────────────────────────────────────────────────────
@@ -93,11 +24,20 @@ exports.subscribe = async (req, res) => {
 exports.getMySubscription = async (req, res) => {
   try {
     const now = new Date();
-    // Auto-expire subscriptions past their end date
-    await Subscription.updateMany(
-      { userId: req.user._id, status: 'active', endDate: { $lt: now } },
-      { status: 'expired' }
-    );
+    // Auto-expire subscriptions past their end date and clear user.subscriptionId
+    const expired = await Subscription.find({
+      userId: req.user._id,
+      status: 'active',
+      endDate: { $lt: now },
+    }).select('_id');
+    if (expired.length) {
+      const ids = expired.map((s) => s._id);
+      await Subscription.updateMany({ _id: { $in: ids } }, { status: 'expired' });
+      await User.updateOne(
+        { _id: req.user._id, subscriptionId: { $in: ids } },
+        { $set: { subscriptionId: null } }
+      );
+    }
 
     const subscription = await Subscription.findOne({
       userId: req.user._id,

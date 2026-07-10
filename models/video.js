@@ -117,4 +117,9 @@ const videoSchema = new mongoose.Schema({
   timestamps: true // Automatically handles createdAt and updatedAt
 });
 
+videoSchema.index({ videoId: 1 }, { unique: true, sparse: true });
+videoSchema.index({ creatorId: 1, createdAt: -1 });
+videoSchema.index({ isActive: 1, createdAt: -1 });
+videoSchema.index({ 'monetization.type': 1, isActive: 1 });
+
 module.exports = mongoose.model('Video', videoSchema);

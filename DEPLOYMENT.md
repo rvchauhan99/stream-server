@@ -1,4 +1,4 @@
-# Knight Kings API — Cloud Run
+# NightKing API — Cloud Run
 
 ## Live service
 
@@ -6,10 +6,16 @@
 |---------|--------|
 | GCP account | `ravatrajsinh@gmail.com` |
 | Project | `knight-kings-prod` |
-| Region | `us-central1` (Iowa, USA) |
+| Region | `us-central1` |
 | Service | `knight-kings-api` |
 | URL | https://knight-kings-api-361196162422.us-central1.run.app |
 | Health | https://knight-kings-api-361196162422.us-central1.run.app/health |
+
+## Database
+
+- Prod MongoDB: `streaming-prod`
+- Seed indexes: `node SCRIPTS/ensureIndexes.js`
+- Migrate from dev: `node SCRIPTS/migrateDevToProd.js`
 
 ## Redeploy
 
@@ -18,11 +24,13 @@ cd stream-server
 ./deploy.sh
 ```
 
-## Netlify frontend env vars
+See [RUNBOOK.md](./RUNBOOK.md) for rollback and incidents.
 
-Set these in the Netlify dashboard for `stream-frontend`, then redeploy:
+## Frontend env vars (Vercel)
 
 ```
 NEXT_PUBLIC_API_URL=https://knight-kings-api-361196162422.us-central1.run.app
 NEXT_PUBLIC_SOCKET_URL=https://knight-kings-api-361196162422.us-central1.run.app
 ```
+
+CORS allowlist must include `https://knightkings.vercel.app`.

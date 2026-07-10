@@ -78,6 +78,12 @@ exports.approveAudit = async (req, res) => {
     audit.approvedAt = new Date();
     await audit.save();
 
+    // Cancel any existing active subscriptions for this user
+    await Subscription.updateMany(
+      { userId: audit.userId, status: 'active' },
+      { status: 'cancelled', updatedBy: req.user._id }
+    );
+
     // 2. Create the Subscription for the User
     const validityDays = audit.planId.validityDays || (audit.planId.validity * 30);
     const endDate = new Date();
@@ -86,7 +92,9 @@ exports.approveAudit = async (req, res) => {
     const subscription = new Subscription({
       userId: audit.userId,
       planId: audit.planId._id,
+      startDate: new Date(),
       endDate,
+      status: 'active',
       paymentDetails: {
         paymentMethod: 'upi',
         transactionId: audit.utrNumber,

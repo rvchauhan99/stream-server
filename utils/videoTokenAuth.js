@@ -1,51 +1,35 @@
 const crypto = require('crypto');
-const { log } = require('util');
-require('dotenv').config();
-const baseUrl = process.env.BASE_URL ||  'https://iframe.mediadelivery.net/';
-const libraryId = process.env.BUNNY_LIBRARY_ID || '427082';
-const tokenSecurityKey = process.env.TOKEN_AUTH_KEY || 'feeccafe-73b8-4a69-b01d-ec4a06b8d176';
 
+const baseUrl = (process.env.BASE_URL || '').trim();
+const libraryId = (process.env.BUNNY_LIBRARY_ID || '').trim();
+const tokenSecurityKey = (process.env.TOKEN_AUTH_KEY || '').trim();
 
-console.log("libraryId " , libraryId);
-console.log("baseUrl " , baseUrl);
-console.log("tokenSecurityKey " , tokenSecurityKey);
+if (!baseUrl || !libraryId || !tokenSecurityKey) {
+  console.error(
+    'Missing Bunny playback config: BASE_URL, BUNNY_LIBRARY_ID, and TOKEN_AUTH_KEY are required'
+  );
+}
 
-
-/**
- * Generates a secure token for video embedding
-
- */
-function generateToken(tokenSecurityKey, videoId, expirationTime) {
-    const data = tokenSecurityKey + videoId + expirationTime;
-    console.log('Token components:', {
-        tokenSecurityKey,
-        videoId,
-        expirationTime,
-        data
-    });
-    return crypto.createHash('sha256').update(data).digest('hex');
+function generateToken(key, videoId, expirationTime) {
+  const data = key + videoId + expirationTime;
+  return crypto.createHash('sha256').update(data).digest('hex');
 }
 
 /**
- * Creates a secure URL for video embedding
-
+ * Creates a secure URL for video embedding.
+ * Call only after entitlement checks (requireVideoAccess / getVideoDetails).
  */
 function createSecureUrl(videoId, expirationTimeInSeconds = 3600) {
-    const expirationTime = Math.floor(Date.now() / 1000) + 3600;
-    console.log("expiration", expirationTime);
-    const token = generateToken(tokenSecurityKey, videoId, expirationTime);
-    let url = `${baseUrl}embed/${libraryId}/${videoId}?token=${token}&expires=${expirationTime}&autoplay=false`;
-    console.log("Generated URL:", url);
-
-
-
-    return url;
+  if (!baseUrl || !libraryId || !tokenSecurityKey) {
+    throw new Error('Bunny playback is not configured');
+  }
+  const expirationTime =
+    Math.floor(Date.now() / 1000) + (Number(expirationTimeInSeconds) || 3600);
+  const token = generateToken(tokenSecurityKey, videoId, expirationTime);
+  return `${baseUrl.replace(/\/?$/, '/')}embed/${libraryId}/${videoId}?token=${token}&expires=${expirationTime}&autoplay=false`;
 }
 
-// console.log("createSecureUrl", createSecureUrl('2c6d2fdb-2784-4df6-956f-cf07147773a4'));
-
-
 module.exports = {
-    generateToken,
-    createSecureUrl,
-}; 
+  generateToken,
+  createSecureUrl,
+};

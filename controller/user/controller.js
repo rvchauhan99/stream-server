@@ -12,6 +12,22 @@ exports.createUser = async (req, res) => {
     }
 
     const { name, email, password, role, profileImage, subscriptionId, preferences } = req.body;
+
+    const creatableBy = {
+      admin: ['viewer', 'creator'],
+      superadmin: ['viewer', 'creator', 'admin', 'superadmin'],
+    };
+    const actorRole = req.user?.role;
+    const allowedRoles = creatableBy[actorRole] || [];
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({
+        message:
+          actorRole === 'admin'
+            ? 'Admins can only create viewer or creator accounts'
+            : 'You are not allowed to create a user with this role',
+      });
+    }
+
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(409).json({ message: 'Email already exists' });
@@ -56,18 +72,15 @@ exports.updateUser = async (req, res) => {
     if (!validate.isValid) {
       return res.status(400).json({ message: "validation failed", errors: validate.errors });
     }
-    console.log("Validation  PAssed ");
+
+    const isAdmin = req.user.role === 'admin' || req.user.role === 'superadmin';
+    const isSelf = String(req.user._id) === String(req.params.id);
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({ message: 'Forbidden. You can only update your own profile.' });
+    }
 
     const { name, preferences } = req.body;
-
-    console.log("Name", name);
-    // console.log("Profile Image" ,  profileImage);
-    console.log("Preferences", preferences);
-
-
     const updateData = { name, preferences };
-
-    // console.log("Update Data" ,  updateData);
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
@@ -87,10 +100,18 @@ exports.updateUser = async (req, res) => {
 // Delete user
 exports.deleteUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    // Soft-delete: block account instead of hard delete (avoids orphaned videos/payouts)
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false },
+      { new: true }
+    ).select('-passwordHash');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    res.json({ message: 'User deleted successfully' });
+    const LoginSession = require('../../models/loginSession');
+    await LoginSession.deleteMany({ user: user._id });
+
+    res.json({ message: 'User deactivated successfully', user });
   } catch (error) {
     console.error('Delete User error:', error.message);
     res.status(500).json({ message: 'Internal Server Error' });
