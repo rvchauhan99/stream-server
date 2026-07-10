@@ -1,0 +1,14 @@
+node_modules
+uploads
+temp
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+*.log
+.DS_Store
+SCRIPTS
+*.md
+videos,.html
+INDEX.HTML

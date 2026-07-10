@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const port = process.env.SERVER_PORT || 5141;
+const port = process.env.PORT || process.env.SERVER_PORT || 5141;
 const router = require("./router");
 const path = require("path");
 const connectDB = require("./library/db");
@@ -67,8 +67,8 @@ async function start() {
   try {
     await connectDB();
     console.log("Database connected");
-    server.listen(port, () => {
-      console.log(`Example app listening on port ${port}`);
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`Server listening on port ${port}`);
     });
     require("./load")
     // const Video = require('./models/video');
